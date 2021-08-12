@@ -1,12 +1,11 @@
 import { admin, functions } from "../utils/functions";
 import { expect } from "chai";
-import { userCreated, publicUserChanged } from "../../../src";
+import { publicUserChanged } from "../../../src";
+import { initUser } from "../utils/users";
 
 describe("Functions - Users", () => {
     it("should create a new user in database", async () => {
-        const wrapped = functions.wrap(userCreated);
-        const user = functions.auth.exampleUserRecord();
-        await wrapped(user, {});
+        const user = await initUser();
         const doc = await admin
             .firestore()
             .collection("users")
@@ -22,11 +21,8 @@ describe("Functions - Users", () => {
     });
     it("should update new user in database", async () => {
         const NEW_NAME = "George";
-
         // Init user
-        const newUserWrapped = functions.wrap(userCreated);
-        const user = functions.auth.exampleUserRecord();
-        await newUserWrapped(user, {});
+        const user = await initUser();
 
         // Send change to user
         const publicUserChangedWrapped = functions.wrap(publicUserChanged);

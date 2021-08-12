@@ -1,4 +1,5 @@
 import { IUser } from "../models";
+import { updateUserNameInConversations } from "../services";
 import { admin, functions } from "../utils";
 
 export const userCreated = functions.auth.user().onCreate(async (user) => {
@@ -38,6 +39,7 @@ export const publicUserChanged = functions.firestore
     .onUpdate(async (snapshot, context) => {
         const { userUid } = context.params;
         const user = snapshot.after.data() as IUser;
+        const userBefore = snapshot.before.data() as IUser;
         const data: Partial<IUser> = { displayName: user.displayName };
 
         await admin
@@ -45,4 +47,7 @@ export const publicUserChanged = functions.firestore
             .collection("users")
             .doc(userUid)
             .set(data, { merge: true });
+
+        if (userBefore.displayName !== user.displayName)
+            await updateUserNameInConversations(userUid, user.displayName);
     });

@@ -10,7 +10,8 @@ exposed (e.g. email, authorizations, etc). It also acts as a protection layer fo
 user is able to change themselves, they can only update the `publicUsers` document.
 A Firebase Function is triggered when the `publicUsers` document is updated.
 This function updates the `users` document accordingly, making sure some data
-is not writable. Firestore rules are set accordingly. `publicUsers` only allow
+is not writable. The functions also updates the display name in the conversations
+where the user is. Firestore rules are set accordingly. `publicUsers` only allow
 `get` but not `list`, to make sure the list of all users cannot be fetched. Users
 can be disabled from the database.
 
@@ -35,28 +36,91 @@ firestore rules. They are both done on the local emulator suite.
 
 Data is duplicated between the `users` and `publicUsers` collection.
 The last message is also stored in its parent document.
-Message author data is not stored directly in the message itself. This means that
-when analyzing a message to get the name of the sender, one should fetch the user from
-`publicUsers`. This problem however, can be tackled with local cache on the client side.
-This sacrifices reads to save writes. The user data could also be saved at the `conversations`
-document-level, but it would also require writes every time a user updates their profile. While
-this has the advantage to save reads, Firestore writes are most costly and limited in matter of
-bulk writing. Batches have a limit of 500 operations. If however the reads were to be minimized
-completely, or if we wanted to make sure there would not be latency between loading the conversations
-and the users in it, the profiles could also be included in the `conversations` documents. The best
-way to then be able to modify the user's name in their conversations would be to make a batch
-write that would modify a `map` field in the document containing the user info map based on their uid.
-E.g.
+Users' display names are also stored in the conversation. Once a user's name is
+updated, the triggered Firebase Functions described above send chunked batch writes
+to Firestore.
 
-```
-{
-    "userInfo": {
-        "ox268Jj3gpQXsQR9716e": {
-            "displayName": "Thomas"
-        }
-    }
+For this example I assumed we only needed to show the name. More info could be
+stored into the conversation document too, but one should keep in mind the
+object nesting limitations in Firestore.
+
+## Example requests (dart)
+
+-   Get conversations for user
+
+```dart
+final _db = FirebaseFirestore.instance;
+final CollectionReference<Map<String, dynamic>> _conversations =
+    _db.collection('conversations');
+Stream<List<Conversation>> getConversations(String userUid) {
+  return _conversations
+      .where("users", arrayContains: userUid)
+      .orderBy("lastMessageDate", descending: true)
+      .snapshots()
+      .map((snapshot) => snapshot.docs
+          .map((doc) {
+            final map = doc.data();
+            map['uid'] = doc.id;
+            return Conversation.fromMap(map);
+          })
+          .toList());
 }
 ```
 
-If we only need the name, we could just store that directly there too instead of a whole object. One
-must keep in mind the object nesting limitations in Firestore.
+-   Get latest messages in conversations
+
+```dart
+final _db = FirebaseFirestore.instance;
+final CollectionReference<Map<String, dynamic>> _conversations =
+    _db.collection('conversations');
+Stream<List<Message>> getConversations(String conversationUid) {
+  return _conversations
+      .doc(conversationUid)
+      .collection("messages")
+      .orderBy('date', descending: true)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map((doc) {
+            final map = doc.data();
+            map['uid'] = doc.id;
+            return Message.fromMap(map);
+          }).toList());
+}
+```
+
+This could also be optimized by first fetching the messages and then
+listening only to the latest one. When it changes, push it to an
+array with the other messages.
+
+To display the sender's name, the conversation document already contains it.
+
+-   Get user public profile (in case complete profile is needed)
+
+```dart
+final _db = FirebaseFirestore.instance;
+final CollectionReference<Map<String, dynamic>> _users =
+    _db.collection('publicUsers');
+Stream<PublicUser> getUser(String uid) {
+  return _users.doc(uid)
+      .snapshots()
+      .map((snapshot) {
+            final map = snapshot.data();
+            return PublicUser.fromMap(map);
+          });
+}
+```
+
+-   Get user profile (in case we want to display their private info)
+
+```dart
+final _db = FirebaseFirestore.instance;
+final CollectionReference<Map<String, dynamic>> _users =
+    _db.collection('users');
+Stream<User> getUser(String uid) {
+  return _users.doc(uid)
+      .snapshots()
+      .map((snapshot) {
+            final map = snapshot.data();
+            return User.fromMap(map);
+          });
+}
+```

@@ -9,6 +9,15 @@ export const messageSent = functions.firestore
             .firestore()
             .collection("conversations")
             .doc(context.params.conversationUid);
+
+        let authorProfile: IUser | null = null;
+        if (author) {
+            const authorDoc = await admin
+                .firestore()
+                .collection("users")
+                .doc(author);
+            authorProfile = (await authorDoc.get()).data() as IUser;
+        }
         await conversationDoc.update({
             lastMessageDate: new Date(), // Could also user serverTimestamp
             lastMessage: content || "",
@@ -20,21 +29,14 @@ export const messageSent = functions.firestore
 
         if (!conversation) return;
 
-        if (author) {
-            const authorDoc = await admin
-                .firestore()
-                .collection("users")
-                .doc(author);
-            const authorProfile = (await authorDoc.get()).data() as IUser;
-            if (silent || !authorProfile) return;
-            await sendNotification(
-                conversation.users.filter((uid: string) => uid !== author),
-                NotificationChannel.MESSAGE,
-                {
-                    body: content,
-                    title: authorProfile.displayName,
-                    conversation: context.params.conversationUid,
-                }
-            );
-        }
+        if (silent || !authorProfile) return;
+        await sendNotification(
+            conversation.users.filter((uid: string) => uid !== author),
+            NotificationChannel.MESSAGE,
+            {
+                body: content,
+                title: authorProfile.displayName,
+                conversation: context.params.conversationUid,
+            }
+        );
     });
