@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    match /users/{userID} {
+      allow get: if (request.auth != null && userID == request.auth.uid) || hasAuthorization(request.auth.uid, "USERS");
+    }
+
+    match /users/{userID}/devices/{deviceId} {
+      allow read: if (request.auth != null && userID == request.auth.uid) || hasAuthorization(request.auth.uid, "USERS");
+      allow write: if request.auth != null && userID == request.auth.uid;
+    }
+    
+    match /publicUsers/{userID} {
+      allow get: if request.auth != null;
+      allow write: if request.auth != null && userID == request.auth.uid && isValidUserUpdate(request.resource.data, resource.data);
+    }
+
+
+    match /conversations/{conversationID} {
+      allow read: if (request.auth != null && request.auth.uid in resource.data.users) || (resource.data.reported && hasAuthorization(request.auth.uid, "REPORTS"));
+      allow delete: if request.auth != null && request.auth.uid in resource.data.users;
+    }
+
+    match /conversations/{conversationID}/messages/{messageID} {
+      allow read: if (request.auth != null && isInConversation(request.auth.uid, conversationID)) || (isConversationReported(conversationID) && hasAuthorization(request.auth.uid, "REPORTS"));
+      allow create: if request.auth != null && isInConversation(request.auth.uid, conversationID)
+        && request.resource.data.date != null
+        && request.resource.data.author == request.auth.uid
+        && isNotDisabled(request.auth.uid);
+    }
+
+    match /reports/{doc} {
+      allow read, write: if hasAuthorization(request.auth.uid, "REPORTS");
+    }
+
+    function isValidUserUpdate(requestData, resourceData) {
+      return requestData.uid == resourceData.uid && requestData.disabled == resourceData.disabled;
+    }
+
+    function isNotDisabled(uid) {
+      let user = get(/databases/$(database)/documents/users/$(uid)).data;
+      return !user.keys().hasAll(["disabled"]) || !user.disabled;
+    }
+
+    function isInConversation(uid, conversationID) {
+      return uid in (get(/databases/$(database)/documents/conversations/$(conversationID))).data.users;
+    }
+
+    function isConversationReported(conversationID) {
+      return get(/databases/$(database)/documents/conversations/$(conversationID)).data.reported;
+    }
+
+    function hasAuthorization(uid, authorization) {
+      let user = get(/databases/$(database)/documents/users/$(uid)).data;
+      return user.authorizations[authorization];
+    }
+  }
+}
