@@ -33,7 +33,8 @@ firestore rules. They are both done on the local emulator suite.
 
 ## Reduplication of data
 
-Data is is only duplicated between the `users` and `publicUsers` collection.
+Data is duplicated between the `users` and `publicUsers` collection.
+The last message is also stored in its parent document.
 Message author data is not stored directly in the message itself. This means that
 when analyzing a message to get the name of the sender, one should fetch the user from
 `publicUsers`. This problem however, can be tackled with local cache on the client side.
