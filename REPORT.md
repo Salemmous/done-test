@@ -91,6 +91,41 @@ This could also be optimized by first fetching the messages and then
 listening only to the latest one. When it changes, push it to an
 array with the other messages.
 
+```dart
+Stream<List<Message>> getMessagesOptimized(String conversationUid) async* {
+  final List<Message> messages = [];
+  final messageDocs = await _conversations
+      .doc(conversationUid)
+      .collection('messages')
+      .orderBy('date', descending: true)
+      .limit(15)
+      .get();
+  messageDocs.docs.forEach((doc) {
+    final map = doc.data();
+    map['uid'] = doc.id;
+    messages.add(Message.fromMap(map));
+  });
+  yield messages;
+  final snapshots = _conversations
+      .doc(conversationUid)
+      .collection('messages')
+      .orderBy('date', descending: true)
+      .limit(1)
+      .snapshots();
+  await for (final snapshot in snapshots) {
+    final isNewMessage = snapshot.docs.isEmpty ||
+        snapshot.docChanges.isEmpty ||
+        snapshot.docChanges.first.type != DocumentChangeType.added;
+    if (isNewMessage) continue;
+    final doc = snapshot.docs.first;
+    final map = doc.data();
+    map['uid'] = doc.id;
+    messages.add(Message.fromMap(map));
+    yield messages;
+  }
+}
+```
+
 To display the sender's name, the conversation document already contains it.
 
 -   Get user public profile (in case complete profile is needed)
